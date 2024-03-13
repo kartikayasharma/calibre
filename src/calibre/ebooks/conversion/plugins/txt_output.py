@@ -2,8 +2,11 @@ __license__ = 'GPL 3'
 __copyright__ = '2009, John Schember <john@nachtimwald.com>'
 __docformat__ = 'restructuredtext en'
 
+import json
 import os
 import shutil
+from bs4 import BeautifulSoup
+from lxml import etree
 
 
 from calibre.customize.conversion import OutputFormatPlugin, \
@@ -12,6 +15,26 @@ from calibre.ptempfile import TemporaryDirectory, TemporaryFile
 
 NEWLINE_TYPES = ['system', 'unix', 'old_mac', 'windows']
 
+def extract_title_and_content(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    section_title_element = soup.find('title')
+    if section_title_element:
+        section_title = section_title_element.text.strip()
+    else:
+        section_title = None
+    title_element = soup.find('h1', class_='title')
+    if title_element:
+        title = title_element.text.strip()
+    else:
+        title = None
+    
+    content_element = soup.find(id='content-body-')
+    if content_element:
+        content = content_element.get_text(separator='\n').strip()
+    else:
+        content = None
+        
+    return section_title, title, content
 
 class TXTOutput(OutputFormatPlugin):
 
@@ -79,42 +102,81 @@ class TXTOutput(OutputFormatPlugin):
                    'not specified font color will not be set and default to the '
                    'color displayed by the reader (generally this is black).')),
      }
+    
+
+
 
     def convert(self, oeb_book, output_path, input_plugin, opts, log):
-        from calibre.ebooks.txt.txtml import TXTMLizer
-        from calibre.utils.cleantext import clean_ascii_chars
-        from calibre.ebooks.txt.newlines import specified_newlines, TxtNewlines
+        # Extract metadata and content from the ebook
+        metadata = {
+            'title': oeb_book.metadata.title,
+            'author': oeb_book.metadata.author,
+            # Add more metadata fields as needed
+        }
 
-        if opts.txt_output_formatting.lower() == 'markdown':
-            from calibre.ebooks.txt.markdownml import MarkdownMLizer
-            self.writer = MarkdownMLizer(log)
-        elif opts.txt_output_formatting.lower() == 'textile':
-            from calibre.ebooks.txt.textileml import TextileMLizer
-            self.writer = TextileMLizer(log)
-        else:
-            self.writer = TXTMLizer(log)
+        print(oeb_book.spine.items[100])
 
-        txt = self.writer.extract_content(oeb_book, opts)
-        txt = clean_ascii_chars(txt)
+            # Extract content from each item in the spine
+        spine_contents = []
+        for item in oeb_book.spine.items:
+            raw = etree.tostring(item.data, encoding='unicode')
+            section_title, title, content = extract_title_and_content(raw)
+            lenC = 0
+            if content != None:
+                lenC = len(content)
+            print(title, lenC)
+            if section_title == 'Sports':
+                break
+            # spine_contents.append({'title': title, 'content': content, 'raw': raw, 'media_type': item.media_type})
+            if title != None or content != None:
+                spine_contents.append({'title': title, 'content': content})
 
-        log.debug('\tReplacing newlines with selected type...')
-        txt = specified_newlines(TxtNewlines(opts.newline).newline, txt)
 
-        close = False
-        if not hasattr(output_path, 'write'):
-            close = True
-            if not os.path.exists(os.path.dirname(output_path)) and os.path.dirname(output_path) != '':
-                os.makedirs(os.path.dirname(output_path))
-            out_stream = open(output_path, 'wb')
-        else:
-            out_stream = output_path
+        # Serialize metadata and content to JSON
+        # json_data = {
+        #     # 'metadata': metadata if opts.get('include_metadata', True) else {},
+        #     'content': spine_contents
+        # }
 
-        out_stream.seek(0)
-        out_stream.truncate()
-        out_stream.write(txt.encode(opts.txt_output_encoding, 'replace'))
+        # Write JSON data to output file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(spine_contents, f, ensure_ascii=False, indent=4)
+            
+    # def convert(self, oeb_book, output_path, input_plugin, opts, log):
+        # from calibre.ebooks.txt.txtml import TXTMLizer
+        # from calibre.utils.cleantext import clean_ascii_chars
+        # from calibre.ebooks.txt.newlines import specified_newlines, TxtNewlines
 
-        if close:
-            out_stream.close()
+        # if opts.txt_output_formatting.lower() == 'markdown':
+        #     from calibre.ebooks.txt.markdownml import MarkdownMLizer
+        #     self.writer = MarkdownMLizer(log)
+        # elif opts.txt_output_formatting.lower() == 'textile':
+        #     from calibre.ebooks.txt.textileml import TextileMLizer
+        #     self.writer = TextileMLizer(log)
+        # else:
+        #     self.writer = TXTMLizer(log)
+
+        # txt = self.writer.extract_content(oeb_book, opts)
+        # txt = clean_ascii_chars(txt)
+
+        # log.debug('\tReplacing newlines with selected type...')
+        # txt = specified_newlines(TxtNewlines(opts.newline).newline, txt)
+
+        # close = False
+        # if not hasattr(output_path, 'write'):
+        #     close = True
+        #     if not os.path.exists(os.path.dirname(output_path)) and os.path.dirname(output_path) != '':
+        #         os.makedirs(os.path.dirname(output_path))
+        #     out_stream = open(output_path, 'wb')
+        # else:
+        #     out_stream = output_path
+
+        # out_stream.seek(0)
+        # out_stream.truncate()
+        # out_stream.write(txt.encode(opts.txt_output_encoding, 'replace'))
+
+        # if close:
+        #     out_stream.close()
 
 
 class TXTZOutput(TXTOutput):

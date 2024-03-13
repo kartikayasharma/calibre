@@ -10,7 +10,7 @@ def absurl(url):
     return url
 
 # Chennai is default edition, for other editions use 'th_hyderabad', 'th_bangalore', 'th_delhi', 'th_kolkata' etc
-local_edition = None
+local_edition = th_delhi
 
 # For past editions, set date to, for example, '2023-01-28'
 past_edition = None
